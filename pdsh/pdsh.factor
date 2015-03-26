@@ -5,9 +5,9 @@
 ! Copyright (C) 2014 Dave Carlton.
 ! See http://factorcode.org/license.txt for BSD license.
 
-USING: accessors continuations help.markup help.syntax io
+USING: accessors continuations combinators help.markup help.syntax io
 io.encodings.utf8 io.files ip-parser kernel libc locals make
-math math.parser namespaces ping regexp sbufs sequences
+math math.parser namespaces ping ping6 regexp sbufs sequences
 sequences.strings sets splitting strings tools.dns.hosts prettyprint parser
 ui.clipboards io.encodings.binary byte-arrays tools.dns.hosts ;
 
@@ -28,18 +28,7 @@ SYMBOL: hosts
     first2 [ swap , , ] "" make  append
     >>name
     ;
-
-: find-duplicate ( duplicate -- )
-    duplicate-hosts get
-    [ [ name>> over = ] keep
-      swap
-      [ rename-duplicate drop ]
-      [ drop ]
-      if
-    ] each
-    drop
-    ;
-
+    
 : playnet.com ( records -- records )   [ domain>> "playnet.com" = ] filter ;
 : wwiionline.com ( records -- records )   [ domain>> "wwiionline.com" = ] filter ;
 
@@ -56,13 +45,13 @@ FROM: namespaces => set ;
 : get-lines ( s -- s )   >sbuf "\r\n" split ;
 
 :: (to-root) ( record -- root )
-        record name>>
-        "root" 
-        record type>>
-        record ip>>
-        record active?>>
-        <dns-record>
-        ;
+    record name>>
+    "root" 
+    record type>>
+    record ip>>
+    record active?>>
+    <dns-record>
+    ;
         
 : to-root ( records -- records )  [ (to-root) ] map ;
 : has-ip ( string record -- 'string )   ip>> append  " " append ;
@@ -77,22 +66,21 @@ FROM: namespaces => set ;
     lines first " " split first ipv4-aton :> previous!
     lines [
         " " split :> line
-        line first ipv4-aton :> thisip
-        ! compare this ip with previous, if same or inc by 1, no break
+        line first ipv4-aton :> thisip  ! compare this ip with previous, if same or inc by 1, no break
         previous thisip =
         previous 1+ thisip =  or
         [ collection  line " " join suffix  collection! ]
         [ collection  " " suffix  line " " join suffix  collection! ]
         if
-        ! set this ip for next compare  
-        line first ipv4-aton previous!
-    ] each
+        line first ipv4-aton previous! ! set this ip for next compare  
+        ] each
     collection 
     ;
-                  
+
+: playnet-only ( records -- records )   { "66.28.224.128/25" "209.144.109.0/24" } networks-only ;
+          
 :: host-format ( records -- lines )
-          records 
-          { "66.28.224.128/25" "209.144.109.0/24" } networks-only
+          records playnet-only
           [ :> record ""
             record has-ip
             record as-root
@@ -105,13 +93,19 @@ FROM: namespaces => set ;
 
 : only-active ( records -- records ) [ active?>> ] filter ;
 
+FROM: ping => alive? ;
+
 :: ping-hosts ( records -- records )
     "Testing hosts...\n" print
     records [
         :> record
         record name>>  record domain>>  name+domain " " append
         record ip>> append  ": " append
-        record ip>> alive?  dup  record active?<<  
+        record type>> {
+            { "A" [ record ip>> alive? ] }
+            { "AAAA" [ record ip>> alive6? ] }
+        } case
+        dup  record active?<<  
         bool>string  append print
         record
     ] map ;
@@ -181,8 +175,8 @@ CONSTANT: ip-to-prune { "66.28.224.195" }
 : playnet-hosts ( -- records )
           hosts get
           only-active
-          uniqueIP
-          { "66.28.224.128/25" "209.144.109.0/24" } networks-only
+          members
+          playnet-only
           to-root
           prune-hosts
           [ dup name>> swap domain>> name+domain ] map
@@ -190,7 +184,7 @@ CONSTANT: ip-to-prune { "66.28.224.195" }
           
 : write-hosts-file ( path -- )   dup  new-hosts-lines  swap write-file ;
 : write-dsh-all ( -- )   playnet-hosts  "~/.dsh/all" utf8 set-file-lines ; 
-: update-local-files ( -- )   "/etc/hosts" write-hosts-file  write-dsh-all ;
+: update-local-files ( -- )   "~/.ssh/hosts" write-hosts-file  write-dsh-all ;
 
 : do-system ( string -- )
     dup system 0= [ ": ok" ] [ ": error" ] if  append print ;
