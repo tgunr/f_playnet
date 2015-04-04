@@ -165,6 +165,9 @@ FROM: ping => alive? ;
 CONSTANT: hosts-to-prune { "digicom" "edge" "edge1" "wwiiol19" "esxi1" "wwiiol20" "fw2" "mtc" "mto" "lenny" "nas" "awulf"} 
 CONSTANT: ip-to-prune { "66.28.224.195" } 
 
+: do-system ( string -- )
+    dup system 0= [ ": ok" ] [ ": error" ] if  append print ;
+
 : prune-hosts ( records -- `records )
     [ name>> hosts-to-prune member? not ] filter
     [ ip>> ip-to-prune member? not ] filter
@@ -179,16 +182,15 @@ CONSTANT: ip-to-prune { "66.28.224.195" }
           prune-hosts
           [ dup name>> swap domain>> name+domain ] map
           ;
+
+: write-hosts-file ( path -- )
+          [ new-hosts-lines ] keep write-file ;
           
-: write-hosts-file ( path -- )   dup  new-hosts-lines  swap write-file ;
 : write-dsh-all ( -- )   playnet-hosts  "~/.dsh/all" utf8 set-file-lines ; 
 : update-local-files ( -- )   "~/.ssh/hosts" write-hosts-file  write-dsh-all ;
 
-: do-system ( string -- )
-    dup system 0= [ ": ok" ] [ ": error" ] if  append print ;
-
 : fetch-dns-files ( -- )
-    "rsync -auz --exclude=\".git*\" ns1.root:/etc/bind/ ~/bind/" do-system
+    "rsync -auz --exclude=\".git*\" ns1.pn:/etc/bind/ ~/bind/" do-system
     "cat ~/bind/db.playnet ~/bind/db.wwiionline > ~/bind/playnet.dns" do-system
     ;
 
