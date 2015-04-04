@@ -55,7 +55,7 @@ FROM: namespaces => set ;
         
 : to-root ( records -- records )  [ (to-root) ] map ;
 : has-ip ( string record -- 'string )   ip>> append  " " append ;
-: as-root ( string record -- 'string )   name>> ".root " append  append ;
+: as-pn ( string record -- 'string )   name>> ".pn " append  append ;
 : as-hostname ( string record -- 'string )   name>> append  " " append ;
 : as-domain ( string record -- 'string )   dup name>>  swap domain>>  name+domain append  " " append ;
 : is-active ( string record -- 'string )   [ "\t # " append ] dip  active?>> bool>string  append ;
@@ -83,9 +83,7 @@ FROM: namespaces => set ;
           records playnet-only
           [ :> record ""
             record has-ip
-            record as-root
-            record as-domain
-            record as-hostname
+            record as-pn
             record is-active 
           ] map
           gap-by-ip
