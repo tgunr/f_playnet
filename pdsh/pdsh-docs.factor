@@ -14,10 +14,6 @@ HELP: rename-duplicate {
     $description "Rename the record using the next hostNum value and append first two letters of the domain."
 } ;
 
-HELP: find-duplicate {
-    $description "Run thru the list of hosts looking for matching (duplicate) names. For each match, rename the record"
-} ;
-
 HELP: rename-duplicates {
     $description "From the list of records, pull out the playnet.com and wwiionline.com records and combine them and look for any duplicate host names in both domains" 
 } ;
