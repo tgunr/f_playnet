@@ -18,7 +18,7 @@ FROM: sets => set ;
 SYMBOL: duplicate-hosts 
 SYMBOL: hostNum
 SYMBOL: hosts
-
+SYMBOL: PLAYNET_DIR
 
 : rename-duplicate ( record -- record )
     dup name>>  "_" append
@@ -44,16 +44,16 @@ FROM: namespaces => set ;
 
 : get-lines ( s -- s )   >sbuf "\r\n" split ;
 
-:: (to-root) ( record -- root )
+:: (to-pn) ( record -- record.pn )
     record name>>
-    "root" 
+    "pn" 
     record type>>
     record ip>>
     record active?>>
     <dns-record>
     ;
         
-: to-root ( records -- records )  [ (to-root) ] map ;
+: to-pn ( records -- records )  [ (to-pn) ] map ;
 : has-ip ( string record -- 'string )   ip>> append  " " append ;
 : as-pn ( string record -- 'string )   name>> ".pn " append  append ;
 : as-hostname ( string record -- 'string )   name>> append  " " append ;
@@ -77,7 +77,8 @@ FROM: namespaces => set ;
     collection 
     ;
 
-: playnet-only ( records -- records )   { "66.28.224.128/25" "209.144.109.0/24" } networks-only ;
+: playnet-only ( records -- records )
+    { "66.28.224.128/25" "209.144.109.0/24" } networks-only ;
           
 :: host-format ( records -- lines )
           records playnet-only
@@ -120,9 +121,8 @@ FROM: ping => alive? ;
     ] each
     ;
 
-: find-active-hosts ( hosts -- )
+: find-active-hosts ( hosts -- actives )
     ping-hosts 
-    hosts set
     ;
 
 : cleanup-file ( lines -- 'lines )
@@ -148,8 +148,15 @@ FROM: ping => alive? ;
 
 : read-file ( path -- file )   utf8 file-lines ;
 : write-file ( lines path -- )   utf8 set-file-lines ;
+
+: ensure-exists ( path -- )
+  dup exists?
+  [ drop ]
+  [ "The file at path " prepend "  does not exist!" append throw ]
+  if
+  ;
           
-:: append-hosts ( lines -- newhosts )
+:: append-new-hosts ( lines -- newhosts )
    "### PLAYNET" :> tag
    lines [ tag = ] split-when  first
    tag suffix
@@ -160,87 +167,110 @@ FROM: ping => alive? ;
    if
    ;
 
-: new-hosts-lines ( path -- lines )   read-file append-hosts ;
+: new-hosts-lines ( path -- lines )
+  [ ensure-exists ] keep
+  read-file append-new-hosts ;
 
 CONSTANT: hosts-to-prune { "digicom" "edge" "edge1" "wwiiol19" "esxi1" "wwiiol20" "fw2" "mtc" "mto" "lenny" "nas" "awulf"} 
 CONSTANT: ip-to-prune { "66.28.224.195" } 
 
 : do-system ( string -- )
-    dup system 0= [ ": ok" ] [ ": error" ] if  append print ;
+  dup system 0= [ ": ok" ] [ ": error" ] if  append print ;
 
 : prune-hosts ( records -- `records )
-    [ name>> hosts-to-prune member? not ] filter
-    [ ip>> ip-to-prune member? not ] filter
-    ;
-
-: playnet-hosts ( -- records )
-          hosts get
-          only-active
-          members
-          playnet-only
-          to-root
-          prune-hosts
-          [ dup name>> swap domain>> name+domain ] map
-          ;
-
-: write-hosts-file ( path -- )
-          [ new-hosts-lines ] keep write-file ;
-          
-: write-dsh-all ( -- )   playnet-hosts  "~/.dsh/all" utf8 set-file-lines ; 
-: update-local-files ( -- )   "~/.ssh/hosts" write-hosts-file  write-dsh-all ;
-
-: fetch-dns-files ( -- )
-    "rsync -auz --exclude=\".git*\" ns1.pn:/etc/bind/ ~/bind/" do-system
-    "cat ~/bind/db.playnet ~/bind/db.wwiionline > ~/bind/playnet.dns" do-system
-    ;
-
-: get-dns-lines ( -- lines )   "~/bind/playnet.dns" gather-records ;
-          
-: process-hosts-file ( -- )
-    get-dns-lines
-    find-active-hosts
-    update-local-files
-    ;
-          
-: save-hosts ( path -- )   hosts get  [ unparse ] map  swap  utf8 set-file-lines ;
-: read-hosts ( path -- )   parse-file  hosts set ;
-: restore-hosts ( -- )  "~/bind/playnet.hosts" read-hosts ;
-          
-: create-new-hosts ( -- )
-  fetch-dns-files  process-hosts-file  "~/bind/playnet.hosts" save-hosts
+  [ name>> hosts-to-prune member? not ] filter
+  [ ip>> ip-to-prune member? not ] filter
   ;
 
+: playnet-hosts ( -- records )
+  hosts get
+  only-active
+  members
+  playnet-only
+  to-pn
+  prune-hosts
+  [ dup name>> swap domain>> name+domain ] map
+  ;
+
+: read-hosts-records ( path -- )
+  parse-file  hosts set ;          
+
+: restore-records ( -- )
+  "~/.ssh/playnet/bind/playnet_host_records" read-hosts-records ;
+          
+: write-hosts-records ( path -- )
+  hosts get  [ unparse ] map  swap  utf8 set-file-lines ;
+          
+: write-hosts-file ( path -- )
+  [ new-hosts-lines ] keep 
+  utf8 set-file-lines
+  ;
+          
+: write-dsh-all ( -- )   playnet-hosts  "~/.dsh/all" utf8 set-file-lines ; 
+
+: update-local-files ( -- )
+  "~/.ssh/playnet/bind/playnet_host_records" write-hosts-records
+  "~/.ssh/playnet/bind/playnet.hosts" write-hosts-file
+  write-dsh-all ;
+
+: fetch-dns-files ( -- )
+  "rsync -auz --exclude=\".git*\" ns1.pn:/etc/bind/ ~/.ssh/playnet/bind/" do-system
+  "cat ~/.ssh/playnet/bind/db.playnet ~/.ssh/playnet/bind/db.wwiionline > ~/.ssh/playnet/bind/playnet.dns" do-system
+  ;
+
+: get-dns-records ( -- lines )
+  "~/.ssh/playnet/bind/playnet.dns" gather-records ;
+          
+: process-hosts-file ( -- )
+  get-dns-records
+  find-active-hosts
+  hosts set    
+  update-local-files
+  ;
+          
+: create-new-hosts ( -- )
+  fetch-dns-files
+  process-hosts-file
+  ;
+
+: replace-etc-hosts ( -- )
+  "sudo cp ~/.ssh/playnet/bind/playnet.hosts /etc/hosts" do-system ;
+          
+: create-pn-hosts ( -- )
+  create-new-hosts  replace-etc-hosts ;
+          
+! Remote server /etc/hosts replacement
 : remotes-local-file ( remote -- path )   ".hosts" append  "/tmp/" prepend ;
         
 :: scp-from-remote ( remote -- string )          
-          "scp " remote append  ":/etc/hosts " append
-          remote remotes-local-file append
-          ;
+   "scp " remote append  ":/etc/hosts " append
+   remote remotes-local-file append
+   ;
           
 :: scp-to-remote ( remote -- string )          
-          "scp " remote remotes-local-file append
-          " " append
-          remote append  ":/etc/hosts " append
-          ;
+   "scp " remote remotes-local-file append
+   " " append
+   remote append  ":/etc/hosts " append
+   ;
 
 : get-remote-hosts-file ( host -- )   scp-from-remote do-system ;
 : put-remote-hosts-file ( host -- )   scp-to-remote do-system ;
 
 :: update-remote-host ( host -- )
-          host get-remote-hosts-file
-          host remotes-local-file  write-hosts-file
-          host put-remote-hosts-file
-          ;
+   host get-remote-hosts-file
+   host remotes-local-file  write-hosts-file
+   host put-remote-hosts-file
+   ;
           
 : update-remote-hosts ( -- )
-          playnet-hosts
-          [ update-remote-host ] each
-          ;
+  playnet-hosts
+  [ update-remote-host ] each
+  ;
           
 : get-interfaces ( record -- string )
-          (to-root) fqdn
-          "ssh " prepend
-          "ifconfig " do-system ;
+  (to-pn) fqdn
+  "ssh " prepend
+  "ifconfig " do-system ;
           
           
 : usage ( -- )
