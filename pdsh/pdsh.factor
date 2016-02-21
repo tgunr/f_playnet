@@ -7,13 +7,11 @@
 
 USING: accessors continuations combinators help.markup help.syntax io
 io.encodings.utf8 io.files ip-parser kernel libc locals make
-math math.parser namespaces ping ping6 regexp sbufs sequences
-sequences.strings sets splitting strings tools.dns.hosts prettyprint parser
+math math.parser namespaces ping regexp sbufs sequences
+ping6 sequences.strings sets splitting strings tools.dns.hosts prettyprint parser
 ui.clipboards io.encodings.binary byte-arrays tools.dns.hosts ;
 
 IN: playnet.pdsh
-
-FROM: sets => set ;
 
 SYMBOL: duplicate-hosts 
 SYMBOL: hostNum
@@ -171,7 +169,7 @@ FROM: ping => alive? ;
   [ ensure-exists ] keep
   read-file append-new-hosts ;
 
-CONSTANT: hosts-to-prune { "digicom" "edge" "edge1" "wwiiol19" "esxi1" "wwiiol20" "fw2" "mtc" "mto" "lenny" "nas" "awulf"} 
+CONSTANT: hosts-to-prune { "nagumo" "digicom" "edge" "edge1" "wwiiol19" "esxi1" "wwiiol20" "fw2" "mtc" "mto" "lenny" "nas" "awulf"} 
 CONSTANT: ip-to-prune { "66.28.224.195" } 
 
 : do-system ( string -- )
@@ -182,10 +180,23 @@ CONSTANT: ip-to-prune { "66.28.224.195" }
   [ ip>> ip-to-prune member? not ] filter
   ;
 
+:: unique-hosts ( records -- seq )
+    V{ } :> collection!
+    V{ } :> uniques!
+    records [ :> item
+        item ip>> :> ip
+        ip uniques member?
+          [ uniques ip suffix! uniques!
+            collection item suffix! collection!
+          ] unless
+    ] each
+    collection
+    ;
+          
 : playnet-hosts ( -- records )
   hosts get
   only-active
-  members
+  unique-hosts
   playnet-only
   to-pn
   prune-hosts

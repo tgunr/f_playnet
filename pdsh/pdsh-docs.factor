@@ -18,11 +18,11 @@ HELP: rename-duplicates {
     $description "From the list of records, pull out the playnet.com and wwiionline.com records and combine them and look for any duplicate host names in both domains" 
 } ;
 
-HELP: get-dns-lines {
+HELP: get-dns-records {
     $description "Collect and display the combined records"
 } ;
 
-HELP: append-hosts
+HELP: append-new-hosts
 { $values
     { "lines" null }
     { "newhosts" null }
@@ -123,7 +123,7 @@ HELP: playnet.com
 }
 { $description "" } ;
 
-HELP: to-root
+HELP: to-pn
 { $values
     { "records" null }
 }
